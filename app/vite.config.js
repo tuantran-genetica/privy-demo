@@ -34,6 +34,18 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/paymaster/, '/'),
       },
+      // Proxy to Privy App Wallet RPC for backend signing (dev only)
+      '/app-wallet-sign': {
+        target: 'https://api.privy.io',
+        changeOrigin: true,
+        secure: true,
+        // Forward to base API – the client will include full path (e.g. /v1/wallets/{id}/rpc)
+        rewrite: (path) => path.replace(/^\/app-wallet-sign/, ''),
+        headers: {
+          'privy-app-id': process.env.VITE_PRIVY_APP_ID || process.env.PRIVY_APP_ID || '',
+          'Authorization': process.env.PRIVY_BASIC_AUTH ? `Basic ${process.env.PRIVY_BASIC_AUTH}` : (process.env.VITE_PRIVY_BASIC_AUTH ? `Basic ${process.env.VITE_PRIVY_BASIC_AUTH}` : ''),
+        },
+      },
     },
   },
 })
