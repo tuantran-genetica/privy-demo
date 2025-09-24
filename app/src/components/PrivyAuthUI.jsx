@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { createPublicClient, http, formatEther } from 'viem'
-import { sepolia } from 'viem/chains'
 
 export function PrivyAuthUI() {
   const { ready, authenticated, user, login, logout } = usePrivy()
@@ -36,7 +35,7 @@ export function PrivyAuthUI() {
           setBalance('')
           return
         }
-        const client = createPublicClient({ chain: sepolia, transport: http() })
+        const client = createPublicClient({ transport: http() })
         const wei = await client.getBalance({ address: embedded.address })
         setBalance(formatEther(wei))
       } catch {
@@ -85,7 +84,9 @@ export function PrivyAuthUI() {
               onClick={async () => {
                 try {
                   setError('')
-                  await login()
+                  await login({
+                    loginMethods: ['email','google','sms'],
+                  })
                 } catch (err) {
                   console.error('Login error:', err)
                   setError('Login failed. Please check your Privy dashboard configuration.')
