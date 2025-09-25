@@ -3,8 +3,6 @@ import { useWallets, usePrivy } from '@privy-io/react-auth'
 import { createPublicClient, createWalletClient, http, custom, formatUnits, parseUnits, erc20Abi } from 'viem'
 import { getUserOperationHash, entryPoint07Abi } from 'viem/account-abstraction'
 import { toSimpleSmartAccount } from 'permissionless/accounts'
-import { createSmartAccountClient } from 'permissionless'
-import { buildPaymasterBody, normalizeSponsorship } from '../utils/aa'
 import { 
   createClients, 
   createSmartAccount, 
@@ -196,49 +194,7 @@ export default function GaslessErc20({ chain }) {
         }
       }
 
-      const bundlerTransport = http('/bundler')
-      const paymasterBase = '/paymaster'
-
-      const customPaymaster = {
-        getPaymasterStubData: async () => ({
-          paymaster: '0x86ee2542009532cd6196B7c6d3254Ac9F9E4ABbc',
-          paymasterData: '0x',
-          paymasterVerificationGasLimit: 300000n,
-          paymasterPostOpGasLimit: 100n,
-          callGasLimit: 200000n,
-          verificationGasLimit: 300000n,
-          preVerificationGas: 50000n
-        }),
-        getPaymasterData: async (userOperation) => {
-          const tempUO = {
-            ...userOperation,
-            callGasLimit: userOperation.callGasLimit || 200000n,
-            verificationGasLimit: userOperation.verificationGasLimit || 300000n,
-            preVerificationGas: userOperation.preVerificationGas || 50000n,
-            maxFeePerGas: userOperation.maxFeePerGas || 0x7A5CF70D5n,
-            maxPriorityFeePerGas: userOperation.maxPriorityFeePerGas || 0x3B9ACA00n
-          }
-          const res = await fetch(paymasterBase, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: buildPaymasterBody(tempUO, entryPoint.address)
-          })
-          if (!res.ok) throw new Error(`Paymaster error ${res.status}: ${await res.text()}`)
-          const raw = await res.json()
-          if (raw.error) throw new Error(raw.error.message)
-          return normalizeSponsorship(raw.result || raw)
-        }
-      }
-
-      const saClient = createSmartAccountClient({
-        account,
-        chain,
-        bundlerTransport,
-        paymaster: customPaymaster,
-        userOperation: {
-          estimateFeesPerGas: async () => ({ maxFeePerGas: 0x7A5CF70D5n, maxPriorityFeePerGas: 0x3B9ACA00n })
-        }
-      })
+      const saClient = createSmartAccountClientWithPaymaster(account, chain)
 
       // Preflight: get token decimals and sender balance to surface clear error early
       let tokenDecimals = 18
