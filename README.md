@@ -1,33 +1,28 @@
-# Privy Smart Wallets – Gasless Demo (LifeAI testnet)
+# Privy Embedded Wallets – Social Login Demo
 
-A streamlined demo showing Privy authentication, embedded wallets, and smart wallets with gas sponsorship on a custom LifeAI testnet.
+A streamlined demo showing Privy authentication and embedded wallets on a custom LifeAI testnet.
 
 ## ⚡ Quick Start Summary
 
 **What you need to set up:**
 
-1. **Privy Account** → Get App ID & App Secret
-2. **Google OAuth** → Set up Google Cloud credentials (optional)
-3. **Environment Files** → Configure `.env` files with credentials
-4. **Enable Features** → Turn on embedded wallets in Privy dashboard
-5. **Run the App** → Start server & client
+1. **Privy Account** → Get App ID
+2. **Environment Files** → Configure `.env` files with credentials
+3. **Run the App** → Start server & client
 
-**Total setup time: ~15-30 minutes**
+**Total setup time: ~5-10 minutes**
 
 ## 🎯 What This Demo Shows
 
 - **Auto-Create Embedded Wallets**: Automatically creates EVM wallets on user login
-- **Smart Wallets & Gas Sponsorship**: Uses Privy smart wallets with sponsored gas
 - **Custom Chain (LifeAI testnet)**: Configured via Privy Provider custom chain
-- **Deploy & Interact Buttons**: Deploy a tiny Box contract and call set(42)
-- **Explorer Links**: View txs on `https://explorer-test.avax.network/lifeaitest`
 
 ## 🏗 Architecture
 
 ```
 Frontend (React + Vite)     Privy SDKs            Privy API
-├── Authentication UI  ──→  ├── Smart Wallets ─→  ├── Wallet Creation
-├── Embedded Wallets        └── Gas Sponsorship   └── User Management
+├── Authentication UI  ──→  ├── Wallets ─→  ├── Wallet Creation
+├── Embedded Wallets                            └── User Management
 └── Gasless Demo
 ```
 
@@ -52,17 +47,13 @@ embeddedWallets: {
 ### 3. **Multiple Authentication Methods**
 
 - Email (passwordless)
-- Google OAuth
-- SMS verification
+- Social login (Google OAuth)
 - External wallets (MetaMask, Coinbase, WalletConnect)
-
-Admin UI and server have been removed in this demo for simplicity.
 
 ## 📋 Prerequisites
 
 - **Node.js 18+**
-- **Privy Account** with App ID and App Secret
-- **Google OAuth Credentials** (for Google login)
+- **Privy Account** with App ID
 - **Environment Variables** (see setup below)
 
 ## 🛠 Complete Setup Checklist
@@ -75,37 +66,14 @@ Admin UI and server have been removed in this demo for simplicity.
 - [ ] Create account or sign in
 - [ ] Create a new app or select existing
 - [ ] Copy your **App ID** from the dashboard
-- [ ] Go to Settings → API Keys → Copy your **App Secret**
 - [ ] Configure **Allowed Origins**:
   - Add `http://localhost:5173` (dev)
   - Add `http://localhost:5174` (backup dev port)
   - Add your production domain when ready
 
-#### 2. **Google OAuth Setup** (Optional but recommended)
-
-- [ ] Go to [Google Cloud Console](https://console.cloud.google.com)
-- [ ] Create a new project or select existing
-- [ ] Enable **Google+ API** and **OAuth2 API**
-- [ ] Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID**
-- [ ] Configure OAuth consent screen:
-  - Application name: "Your App Name"
-  - Authorized domains: `localhost`, your domain
-- [ ] Create **Web Application** credentials:
-  - Authorized origins: `http://localhost:5173`, `https://yourdomain.com`
-  - Authorized redirect URIs: `https://auth.privy.io/api/v1/oauth/callback`
-- [ ] Copy **Client ID** and **Client Secret**
-- [ ] Add Google credentials to **Privy Dashboard**:
-  - Settings → Login Methods → Google → Add credentials
-
-#### 3. **SMS Provider Setup** (Optional)
-
-- [ ] In Privy Dashboard → Settings → Login Methods → SMS
-- [ ] Configure SMS provider (Twilio recommended)
-- [ ] Add phone number verification settings
-
 ### **Phase 2: Code Setup**
 
-#### 4. **Clone and Install Dependencies**
+#### 2. **Clone and Install Dependencies**
 
 ```bash
 # Clone the repository
@@ -121,49 +89,18 @@ cd ../app
 npm install
 ```
 
-#### 5. **Environment Configuration**
+#### 3. **Environment Configuration**
 
 **Create Client Environment** (`app/.env`):
 
 ```env
 # Required - From Privy Dashboard
 VITE_PRIVY_APP_ID=your_privy_app_id_here
-
-# Optional - Headless build only needs APP_ID and CLIENT_ID if configured
-VITE_PRIVY_CLIENT_ID=your_privy_client_id_here
 ```
 
-### **Phase 3: Privy Configuration**
+### **Phase 3: Testing Setup**
 
-#### 6. **Enable Embedded Wallets**
-
-- [ ] In Privy Dashboard → Settings → Embedded Wallets
-- [ ] Enable **Ethereum** embedded wallets
-- [ ] Set creation policy to **"Create for all users"**
-- [ ] Configure supported chains (Sepolia for testing)
-
-#### 7. **Configure Login Methods**
-
-- [ ] In Privy Dashboard → Settings → Login Methods
-- [ ] Enable desired methods:
-  - [x] **Email** (passwordless)
-  - [x] **Google** (if OAuth set up)
-  - [x] **SMS** (if provider configured)
-  - [x] **Wallet** (MetaMask, Coinbase, etc.)
-
-#### 8. **Set Up Webhooks** (Optional)
-
-- [ ] Settings → Webhooks → Add endpoint
-- [ ] Configure for user events if needed
-
-### **Phase 4: Testing Setup**
-
-#### 9. **Test Environment**
-
-- [ ] Ensure you have a **MetaMask** or similar wallet for testing
-- This demo uses a custom LifeAI testnet and a paymaster for sponsorship.
-
-#### 10. **Run and Verify**
+#### 4. **Run and Verify**
 
 ```bash
 cd app && npm run dev
@@ -177,9 +114,7 @@ cd app && npm run dev
 - [ ] Can authenticate with Google (if configured)
 - [ ] Embedded wallet creates automatically
 - [ ] Wallet address displays
-- [ ] Balance loads (may be 0, since gas is sponsored)
-- [ ] Deploy contract works (Box.sol)
-- [ ] set(42) call works and shows tx link
+- [ ] Balance loads (may be 0)
 
 ## ⚙️ Detailed Setup Instructions
 
@@ -200,9 +135,7 @@ cd ../app && npm install
 
 ```env
 PRIVY_APP_ID=your_privy_app_id_here
-PRIVY_APP_SECRET=your_privy_app_secret_here
 PORT=5057
-ADMIN_TOKEN=your_secure_admin_token_here
 ```
 
 **Client Environment** (`app/.env`):
@@ -210,14 +143,13 @@ ADMIN_TOKEN=your_secure_admin_token_here
 ```env
 VITE_PRIVY_APP_ID=your_privy_app_id_here
 VITE_SERVER_URL=http://localhost:5057
-VITE_ADMIN_TOKEN=your_secure_admin_token_here
 ```
 
 ### 3. **Get Privy Credentials**
 
 1. Go to [Privy Dashboard](https://dashboard.privy.io)
 2. Create a new app or use existing
-3. Copy your **App ID** and **App Secret**
+3. Copy your **App ID**
 4. Configure allowed origins (e.g., `http://localhost:5173`)
 
 ### 4. **Run the Application**
@@ -237,16 +169,10 @@ Open your browser to the displayed Vite URL (typically `http://localhost:5173`)
 ### **User Authentication Flow**
 
 1. **Visit the app** → See login interface
-2. **Choose auth method** → Email, Google, SMS, or wallet
+2. **Choose auth method** → Email, Google, or wallet
 3. **Complete authentication** → Privy handles the flow
 4. **Wallet auto-created** → Embedded wallet appears instantly
 5. **View details** → See address, balance, and user info
-
-### **Admin Features**
-
-1. **Click "Admin" tab** → Access user search
-2. **Search users** → By email, Twitter, or wallet address
-3. **View results** → See user details and linked accounts
 
 ## 🔧 Technical Implementation
 
@@ -260,20 +186,10 @@ Open your browser to the displayed Vite URL (typically `http://localhost:5173`)
     embeddedWallets: {
       ethereum: { createOnLogin: 'all-users' }
     },
-    loginMethods: ['email', 'google', 'sms', 'wallet']
+    loginMethods: ['email', 'google', 'wallet']
   }}
 >
 ```
-
-```javascript
-// PrivyAuthUI.jsx - Wallet integration
-const { wallets } = useWallets();
-const embedded = wallets.find((wallet) => wallet.walletClientType === "privy");
-```
-
-### **Smart Wallets Provider**
-
-The app wraps components with `SmartWalletsProvider` to enable ERC-4337 transactions with UI prompts and sponsorship routing.
 
 ### **Custom Chain**
 
@@ -353,10 +269,6 @@ embeddedWallets: {
    - Check allowed origins in Privy dashboard
    - Ensure HTTPS for production deployments
 
-3. **Gasless not sponsored**
-   - Ensure Paymaster/Bundler URLs are set for the LifeAI chain in your Privy Dashboard
-   - Confirm smart wallet contract is deployed on-chain (Privy will surface this in dashboard)
-
 ### **Debug Mode**
 
 The app includes comprehensive logging:
@@ -382,7 +294,6 @@ The app includes comprehensive logging:
 
 ## 📚 Resources
 
-- [Privy Smart Wallets Overview](https://docs.privy.io/wallets/using-wallets/evm-smart-wallets/overview)
 - [Privy Dashboard](https://dashboard.privy.io)
 - [Viem Documentation](https://viem.sh)
 - [React Documentation](https://react.dev)
