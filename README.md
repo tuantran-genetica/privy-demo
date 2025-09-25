@@ -1,6 +1,6 @@
-# Privy Demo: Auto-Create Embedded Wallets + Multi-Chain Support
+# Privy Smart Wallets – Gasless Demo (LifeAI testnet)
 
-A comprehensive demonstration of Privy's authentication and embedded wallet features with automatic wallet creation, multi-chain support, and admin user management.
+A streamlined demo showing Privy authentication, embedded wallets, and smart wallets with gas sponsorship on a custom LifeAI testnet.
 
 ## ⚡ Quick Start Summary
 
@@ -17,20 +17,18 @@ A comprehensive demonstration of Privy's authentication and embedded wallet feat
 ## 🎯 What This Demo Shows
 
 - **Auto-Create Embedded Wallets**: Automatically creates EVM wallets on user login
-- **Multi-Chain Support**: Same wallet address works across all EVM chains
-- **Multiple Auth Methods**: Email, Google, SMS, and external wallet login
-- **Admin User Search**: Search users by email, Twitter handle, or wallet address
-- **Real-time Balance**: Fetches and displays Sepolia testnet balance
-- **Chain Agnostic**: Embedded wallets work on Ethereum, Polygon, Arbitrum, etc.
+- **Smart Wallets & Gas Sponsorship**: Uses Privy smart wallets with sponsored gas
+- **Custom Chain (LifeAI testnet)**: Configured via Privy Provider custom chain
+- **Deploy & Interact Buttons**: Deploy a tiny Box contract and call set(42)
+- **Explorer Links**: View txs on `https://explorer-test.avax.network/lifeaitest`
 
 ## 🏗 Architecture
 
 ```
-Frontend (React + Vite)     Backend (Express)     Privy API
-├── Authentication UI  ──→  ├── Admin Search ──→  ├── User Management
-├── Embedded Wallets        ├── Proxy Endpoint    ├── Wallet Creation
-├── Balance Display         └── Simple Auth       └── Account Linking
-└── Admin Interface
+Frontend (React + Vite)     Privy SDKs            Privy API
+├── Authentication UI  ──→  ├── Smart Wallets ─→  ├── Wallet Creation
+├── Embedded Wallets        └── Gas Sponsorship   └── User Management
+└── Gasless Demo
 ```
 
 ## 🚀 Key Features
@@ -58,11 +56,7 @@ embeddedWallets: {
 - SMS verification
 - External wallets (MetaMask, Coinbase, WalletConnect)
 
-### 4. **Admin User Management**
-
-- Search by email, Twitter handle, or wallet address
-- Secure API with token authentication
-- Real-time user data from Privy Management API
+Admin UI and server have been removed in this demo for simplicity.
 
 ## 📋 Prerequisites
 
@@ -129,31 +123,14 @@ npm install
 
 #### 5. **Environment Configuration**
 
-**Create Server Environment** (`server/.env`):
-
-```env
-# Required - From Privy Dashboard
-PRIVY_APP_ID=your_privy_app_id_here
-PRIVY_APP_SECRET=your_privy_app_secret_here
-
-# Optional - Server Configuration
-PORT=5057
-
-# Required - Admin Security
-ADMIN_TOKEN=your_secure_random_token_here
-```
-
 **Create Client Environment** (`app/.env`):
 
 ```env
 # Required - From Privy Dashboard
 VITE_PRIVY_APP_ID=your_privy_app_id_here
 
-# Required - Backend Connection
-VITE_SERVER_URL=http://localhost:5057
-
-# Required - Admin Access (should match server)
-VITE_ADMIN_TOKEN=your_secure_random_token_here
+# Optional - Headless build only needs APP_ID and CLIENT_ID if configured
+VITE_PRIVY_CLIENT_ID=your_privy_client_id_here
 ```
 
 ### **Phase 3: Privy Configuration**
@@ -184,18 +161,11 @@ VITE_ADMIN_TOKEN=your_secure_random_token_here
 #### 9. **Test Environment**
 
 - [ ] Ensure you have a **MetaMask** or similar wallet for testing
-- [ ] Get **Sepolia testnet ETH** from faucets:
-  - [Sepolia Faucet](https://sepoliafaucet.com)
-  - [Alchemy Faucet](https://sepoliafaucet.com)
-- [ ] Configure MetaMask for Sepolia network
+- This demo uses a custom LifeAI testnet and a paymaster for sponsorship.
 
 #### 10. **Run and Verify**
 
 ```bash
-# Terminal 1: Start backend
-cd server && npm run dev
-
-# Terminal 2: Start frontend
 cd app && npm run dev
 ```
 
@@ -207,9 +177,9 @@ cd app && npm run dev
 - [ ] Can authenticate with Google (if configured)
 - [ ] Embedded wallet creates automatically
 - [ ] Wallet address displays
-- [ ] Sepolia balance loads (0 ETH initially)
-- [ ] Admin panel accessible
-- [ ] User search works in admin panel
+- [ ] Balance loads (may be 0, since gas is sponsored)
+- [ ] Deploy contract works (Box.sol)
+- [ ] set(42) call works and shows tx link
 
 ## ⚙️ Detailed Setup Instructions
 
@@ -301,31 +271,13 @@ const { wallets } = useWallets();
 const embedded = wallets.find((wallet) => wallet.walletClientType === "privy");
 ```
 
-### **Backend Architecture**
+### **Smart Wallets Provider**
 
-```javascript
-// Admin search with Privy Management API
-const endpoint = "https://api.privy.io/api/v1/users";
-const authHeader =
-  "Basic " +
-  Buffer.from(`${PRIVY_APP_ID}:${PRIVY_APP_SECRET}`).toString("base64");
-```
+The app wraps components with `SmartWalletsProvider` to enable ERC-4337 transactions with UI prompts and sponsorship routing.
 
-### **Multi-Chain Support**
+### **Custom Chain**
 
-The embedded wallet address works across all EVM chains:
-
-```javascript
-// Same address, different chains
-const sepoliaClient = createPublicClient({ chain: sepolia, transport: http() });
-const polygonClient = createPublicClient({ chain: polygon, transport: http() });
-const arbitrumClient = createPublicClient({
-  chain: arbitrum,
-  transport: http(),
-});
-
-// All use the same wallet.address!
-```
+`App.jsx` defines LifeAI testnet with `defineChain` and sets it as `defaultChain`.
 
 ## 🔒 Security Features
 
@@ -372,10 +324,7 @@ loginMethods: ["email", "google", "discord", "github"];
 
 ### **Change Default Chain**
 
-```javascript
-// In App.jsx config
-defaultChain: { id: 137, name: 'Polygon' }
-```
+Set `defaultChain` and `chains` in `PrivyProvider` config.
 
 ### **Modify Wallet Creation**
 
@@ -404,10 +353,9 @@ embeddedWallets: {
    - Check allowed origins in Privy dashboard
    - Ensure HTTPS for production deployments
 
-3. **Admin search not working**
-   - Verify App Secret is correct
-   - Check admin token matches between client/server
-   - Ensure server is running and accessible
+3. **Gasless not sponsored**
+   - Ensure Paymaster/Bundler URLs are set for the LifeAI chain in your Privy Dashboard
+   - Confirm smart wallet contract is deployed on-chain (Privy will surface this in dashboard)
 
 ### **Debug Mode**
 
@@ -422,10 +370,8 @@ The app includes comprehensive logging:
 ### **Security Checklist**
 
 - [ ] Use HTTPS everywhere
-- [ ] Rotate admin tokens regularly
-- [ ] Set proper CORS origins
-- [ ] Use environment-specific Privy apps
-- [ ] Enable rate limiting on admin endpoints
+      -- [ ] Use environment-specific Privy apps
+      -- [ ] Configure allowed origins in Privy dashboard
 
 ### **Scaling Considerations**
 
@@ -436,7 +382,7 @@ The app includes comprehensive logging:
 
 ## 📚 Resources
 
-- [Privy Documentation](https://docs.privy.io)
+- [Privy Smart Wallets Overview](https://docs.privy.io/wallets/using-wallets/evm-smart-wallets/overview)
 - [Privy Dashboard](https://dashboard.privy.io)
 - [Viem Documentation](https://viem.sh)
 - [React Documentation](https://react.dev)
