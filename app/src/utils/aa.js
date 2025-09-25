@@ -82,6 +82,7 @@ export function normalizeSponsorship(resp) {
   if (r.maxPriorityFeePerGas != null) out.maxPriorityFeePerGas = maybe(r.maxPriorityFeePerGas)
   if (r.paymasterVerificationGasLimit != null) out.paymasterVerificationGasLimit = maybe(r.paymasterVerificationGasLimit)
   if (r.paymasterPostOpGasLimit != null) out.paymasterPostOpGasLimit = maybe(r.paymasterPostOpGasLimit)
+  console.log('out', out)
   return out
 }
 

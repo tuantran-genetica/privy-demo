@@ -1,36 +1,152 @@
 import React, { useMemo, useState } from 'react'
 import { useWallets, usePrivy } from '@privy-io/react-auth'
-import { createPublicClient, createWalletClient, http, custom } from 'viem'
-import { getUserOperationHash } from 'viem/account-abstraction'
-import { createSmartAccountClient } from 'permissionless'
+import { createPublicClient, createWalletClient, http, custom, formatUnits, parseUnits, erc20Abi } from 'viem'
+import { getUserOperationHash, entryPoint07Abi } from 'viem/account-abstraction'
 import { toSimpleSmartAccount } from 'permissionless/accounts'
-import { buildPaymasterBody, normalizeSponsorship, parseUnits } from '../utils/aa'
+import { createSmartAccountClient } from 'permissionless'
+import { buildPaymasterBody, normalizeSponsorship } from '../utils/aa'
+import { 
+  createClients, 
+  createSmartAccount, 
+  getTokenInfo, 
+  getTokenBalance, 
+  createSmartAccountClientWithPaymaster, 
+  tryDecodeRevertReason,
+  pollUserOperationReceipt,
+  checkTransactionStatus,
+  analyzeTransactionFailure,
+  decodeContractInteraction
+} from '../utils/erc20'
 
-const erc20Abi = [
-  { name: 'transfer', type: 'function', stateMutability: 'nonpayable', inputs: [ { name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' } ], outputs: [ { name: '', type: 'bool' } ] },
-]
 
 export default function GaslessErc20({ chain }) {
   const { wallets } = useWallets()
-  const { user } = usePrivy()
+  const { user, getAccessToken } = usePrivy()
+  // UI state
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [hash, setHash] = useState('')
-  const [token, setToken] = useState('')
-  const [to, setTo] = useState('')
-  const [amount, setAmount] = useState('')
+  const [token, setToken] = useState('0xf5793007d688D27a5359d42F2469B275B6f0863d')
+  const [to, setTo] = useState('0x1583f7ea246e5D70693DEb7233340AE3718397C3')
+  const [amount, setAmount] = useState('1')
   const [useAppWallet, setUseAppWallet] = useState(false)
+
+  // Transaction state
+  const [txStatus, setTxStatus] = useState(null) // 'pending', 'success', 'failed'
+  const [checking, setChecking] = useState(false)
+  const [failureReason, setFailureReason] = useState('')
+  const [userOpHash, setUserOpHash] = useState('')
+  const [bundledTxHash, setBundledTxHash] = useState('')
+  const [pollAttempts, setPollAttempts] = useState(0)
+
+  // Token info state
+  const [tokenBalance, setTokenBalance] = useState('0')
+  const [tokenSymbol, setTokenSymbol] = useState('')
+  const [tokenDecimals, setTokenDecimals] = useState(18)
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [eoaTokenBalance, setEoaTokenBalance] = useState('0')
+  const [eoaBalanceLoading, setEoaBalanceLoading] = useState(false)
 
   const explorerBase = useMemo(() => {
     if (chain?.id === 94909) return 'https://explorer-test.avax.network/lifeaitest'
     return undefined
   }, [chain?.id])
 
+  // Create callback object for transaction monitoring
+  const createCallbacks = () => ({
+    // Status updates
+    setChecking,
+    setTxStatus,
+    setPollAttempts,
+    setFailureReason,
+    setBundledTxHash,
+    
+    // Transaction checks
+    checkTransactionStatus: (txHash, type = 'transfer') => 
+      checkTransactionStatus(txHash, type, token, chain, createCallbacks()),
+    analyzeTransactionFailure: (publicClient, receipt, txHash, type) =>
+      analyzeTransactionFailure(publicClient, receipt, txHash, type, token, createCallbacks()),
+    
+    // Balance updates
+    fetchTokenBalance,
+    fetchEoaTokenBalance
+  })
+
+
+
+  // Fetch EOA (embedded wallet) ERC20 token balance
+  async function fetchEoaTokenBalance() {
+    if (!token || !wallets.length) return
+    
+    try {
+      setEoaBalanceLoading(true)
+      
+      const embedded = wallets.find(w => w.walletClientType === 'privy')
+      if (!embedded) return
+      
+      const publicClient = createPublicClient({ chain, transport: http('/lifeai-rpc') })
+      
+      // Get token info and balance
+      const { decimals, symbol } = await getTokenInfo(publicClient, token)
+      const balance = await getTokenBalance(publicClient, token, embedded.address, decimals)
+      
+      setEoaTokenBalance(balance)
+      setTokenDecimals(decimals)
+      setTokenSymbol(symbol)
+      
+    } catch (e) {
+      console.error('Error fetching EOA token balance:', e)
+      setEoaTokenBalance('Error')
+    } finally {
+      setEoaBalanceLoading(false)
+    }
+  }
+
+  // Fetch ERC20 token balance and metadata
+  async function fetchTokenBalance() {
+    if (!token || !wallets.length) return
+    
+    try {
+      setBalanceLoading(true)
+      setError('')
+      
+      const embedded = wallets.find(w => w.walletClientType === 'privy')
+      if (!embedded) return
+      
+      // Create clients and smart account
+      const { publicClient, owner } = await createClients(embedded, chain)
+      const account = await createSmartAccount(publicClient, owner, chain)
+      
+      // Get token info and balance
+      const { decimals, symbol } = await getTokenInfo(publicClient, token)
+      const balance = await getTokenBalance(publicClient, token, account.address, decimals)
+      
+      setTokenBalance(balance)
+      setTokenDecimals(decimals)
+      setTokenSymbol(symbol)
+      
+    } catch (e) {
+      console.error('Error fetching token balance:', e)
+      setTokenBalance('Error')
+      setTokenSymbol('TOKEN')
+    } finally {
+      setBalanceLoading(false)
+    }
+  }
+
+
+
   async function send() {
     try {
+      // Reset all state
       setBusy(true)
       setError('')
-      setHash('')
+      setTxStatus(null)
+      setFailureReason('')
+      setUserOpHash('')
+      setBundledTxHash('')
+      setPollAttempts(0)
+
+      // Validate inputs
       if (!token || !to || !amount) throw new Error('Fill token, to, amount')
 
       const embedded = wallets.find(w => w.walletClientType === 'privy')
@@ -44,7 +160,6 @@ export default function GaslessErc20({ chain }) {
       if (!accountFactory) throw new Error('Missing VITE_SIMPLE_ACCOUNT_FACTORY')
 
       let account = await toSimpleSmartAccount({ client: publicClient, owner, entryPoint, factoryAddress: accountFactory, index: 0n })
-
       // Optional: use App Wallet (backend signing) to avoid user prompts
       if (useAppWallet) {
         account = {
@@ -59,18 +174,19 @@ export default function GaslessErc20({ chain }) {
               chainId: chain.id
             })
             // Resolve current App Wallet ID from session (linked_accounts)
-            let appWalletId = import.meta.env.VITE_PRIVY_APP_WALLET_ID
-            if (!appWalletId) {
-              const linked = (user?.linkedAccounts || user?.linked_accounts || [])
-              const appWallet = linked.find((a) => (a?.type === 'wallet' || a?.type === 'embedded_wallet' || a?.wallet_client === 'privy' || a?.walletClient === 'privy'))
-              appWalletId = appWallet?.id
-            }
-            if (!appWalletId) throw new Error('No App Wallet ID available in session')
-            const res = await fetch(`/app-wallet-sign/v1/wallets/${appWalletId}/rpc`, {
+           
+            let walletId = user?.wallet?.id
+          if(!walletId) throw new Error('No Wallet ID available in session')
+            // Attach user's JWT per Privy docs to authorize on-behalf-of signing
+            const jwt = await getAccessToken()?.catch(() => null)
+            const res = await fetch(`/api/wallets/${walletId}/rpc`, {
               method: 'POST',
-              headers: { 'content-type': 'application/json' },
+              headers: {
+                'content-type': 'application/json',
+                ...(jwt ? { 'x-user-jwt': jwt } : {}),
+              },
               body: JSON.stringify({ method: 'personal_sign', params: { message: hash, encoding: 'hex' } })
-            })
+            })  
             if (!res.ok) throw new Error(`App wallet sign error ${res.status}: ${await res.text()}`)
             const data = await res.json()
             const sig = data?.data?.signature || data?.signature
@@ -124,44 +240,223 @@ export default function GaslessErc20({ chain }) {
         }
       })
 
-      const value = parseUnits(amount, 18)
-      const txHash = await saClient.writeContract({
+      // Preflight: get token decimals and sender balance to surface clear error early
+      let tokenDecimals = 18
+      try {
+        tokenDecimals = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' })
+      } catch {}
+      // Convert amount to token units with decimals
+      const value = parseUnits(amount, tokenDecimals)
+
+      // Check smart wallet balance
+      let senderBalance = 0n
+      try {
+        senderBalance = await publicClient.readContract({ 
+          address: token, 
+          abi: erc20Abi, 
+          functionName: 'balanceOf', 
+          args: [account.address] 
+        })
+      } catch {}
+      if (senderBalance < value) {
+        throw new Error(`Insufficient token balance in smart wallet ${account.address}. Have ${formatUnits(senderBalance, tokenDecimals)}, need ${amount}.`)
+      }
+
+      // Send the transfer transaction
+      const uoHash = await saClient.writeContract({
         address: token,
         abi: erc20Abi,
         functionName: 'transfer',
         args: [to, value]
       })
-      setHash(txHash || '')
+      setUserOpHash(uoHash || '')
+      
+      // Automatically check user operation receipt
+      if (uoHash) {
+        setTxStatus('pending')
+        pollUserOperationReceipt(uoHash, 0, 'transfer', createCallbacks())
+      }
     } catch (e) {
-      setError(e?.message || 'ERC20 transfer failed')
+      console.error('ERC20 transfer error:', e)
+      
+      // Simplified error handling for common cases
+      let errorMessage = e?.message || 'Transfer failed'
+      
+      // Clean up technical details from error message
+      errorMessage = errorMessage
+        .replace(/^(paymaster|bundler|useroperation|factory|rpc).*error:?\s*/i, '')
+        .replace(/^error:?\s*/i, '')
+        .replace(/\s*\{[^}]*\}/g, '') // Remove JSON-like details
+        .trim()
+
+      // Add user-friendly prefix based on error type
+      if (errorMessage.toLowerCase().includes('insufficient')) {
+        errorMessage = `💰 Balance too low: ${errorMessage}`
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('connection')) {
+        errorMessage = `🌐 Network issue: ${errorMessage}`
+      } else if (errorMessage.toLowerCase().includes('sign')) {
+        errorMessage = `✍️ Signing failed: ${errorMessage}`
+      } else {
+        errorMessage = `❌ ${errorMessage}`
+      }
+      
+      setError(errorMessage)
     } finally {
       setBusy(false)
     }
   }
 
+
+
   return (
     <div>
       <h2 className="h2">Gasless ERC-20 Transfer</h2>
       <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
-        <input className="input" placeholder="Token address" value={token} onChange={(e) => setToken(e.target.value)} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input 
+            className="input" 
+            placeholder="Token address" 
+            value={token} 
+            onChange={(e) => setToken(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => {
+              fetchTokenBalance()
+              fetchEoaTokenBalance()
+            }} 
+            disabled={balanceLoading || eoaBalanceLoading || !token}
+            style={{ minWidth: '140px', fontSize: '0.9em' }}
+          >
+            {(balanceLoading || eoaBalanceLoading) ? 'Loading...' : '🔄 Get Balances'}
+          </button>
+        </div>
+        
+        {/* Token Balance Display */}
+        {(tokenBalance || eoaTokenBalance || tokenSymbol || balanceLoading || eoaBalanceLoading) && (
+          <div style={{ 
+            padding: 12, 
+            background: '#f8f9fa', 
+            border: '1px solid #dee2e6', 
+            borderRadius: 4,
+            fontSize: '0.95em'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                {/* Smart Account Balance */}
+                <div style={{ marginBottom: 12 }}>
+                  <strong>🏦 Smart Account Balance:</strong>
+                  <br/>
+                  <span style={{ 
+                    fontSize: '1.1em', 
+                    fontWeight: 'bold', 
+                    color: tokenBalance === 'Error' ? '#d32f2f' : 
+                           (tokenBalance === '0' || tokenBalance === '0.0') ? '#f57c00' : '#2e7d32' 
+                  }}>
+                    {balanceLoading ? 'Loading...' : `${tokenBalance} ${tokenSymbol}`}
+                  </span>
+                  {(tokenBalance === '0' || tokenBalance === '0.0') && !balanceLoading && tokenBalance !== 'Error' && (
+                    <div style={{ fontSize: '0.8em', color: '#f57c00', marginTop: 2, fontStyle: 'italic' }}>
+                      ⚠️ Smart account has no tokens. Transfer tokens to your smart account first.
+                    </div>
+                  )}
+                </div>
+
+                {/* EOA Balance */}
+                <div style={{ marginBottom: 8 }}>
+                  <strong>👤 Embedded Wallet (EOA) Balance:</strong>
+                  <br/>
+                  <span style={{ 
+                    fontSize: '1.1em', 
+                    fontWeight: 'bold', 
+                    color: eoaTokenBalance === 'Error' ? '#d32f2f' : 
+                           (eoaTokenBalance === '0' || eoaTokenBalance === '0.0') ? '#f57c00' : '#2e7d32' 
+                  }}>
+                    {eoaBalanceLoading ? 'Loading...' : `${eoaTokenBalance} ${tokenSymbol}`}
+                  </span>
+                  {(eoaTokenBalance === '0' || eoaTokenBalance === '0.0') && !eoaBalanceLoading && eoaTokenBalance !== 'Error' && (
+                    <div style={{ fontSize: '0.8em', color: '#f57c00', marginTop: 2, fontStyle: 'italic' }}>
+                      ⚠️ EOA has no tokens.
+                    </div>
+                  )}
+                </div>
+
+                {tokenBalance !== 'Error' && eoaTokenBalance !== 'Error' && !balanceLoading && !eoaBalanceLoading && (
+                  <div style={{ fontSize: '0.85em', color: '#666', marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                    <strong>Token Info:</strong> {tokenSymbol || 'Unknown'} • Decimals: {tokenDecimals}
+                    <br/>
+                    <strong>EOA Address:</strong> {wallets.find(w => w.walletClientType === 'privy')?.address?.slice(0, 10)}...
+                  </div>
+                )}
+              </div>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  fetchTokenBalance()
+                  fetchEoaTokenBalance()
+                }} 
+                disabled={balanceLoading || eoaBalanceLoading || !token}
+                style={{ fontSize: '0.8em', padding: '4px 8px', marginLeft: '8px' }}
+              >
+                🔄
+              </button>
+            </div>
+          </div>
+        )}
+        
+        
         <input className="input" placeholder="Recipient address" value={to} onChange={(e) => setTo(e.target.value)} />
-        <input className="input" placeholder="Amount (decimals 18)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <input className="input" placeholder={`Amount (decimals ${tokenDecimals})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={useAppWallet} onChange={(e) => setUseAppWallet(e.target.checked)} />
           Use App Wallet (no prompts)
         </label>
         <button className="btn btn-primary" onClick={send} disabled={busy}>Send gasless transfer</button>
+        {userOpHash && (
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => pollUserOperationReceipt(userOpHash, 0, 'transfer', createCallbacks())} 
+            disabled={checking}
+            style={{ marginLeft: 8 }}
+          >
+            {checking ? 'Checking...' : 'Check Transfer Status'}
+          </button>
+        )}
       </div>
-      {hash && (
-        <div style={{ marginTop: 12 }}>
-          <strong>Tx:</strong>{' '}
-          {explorerBase ? (
-            <a href={`${explorerBase}/tx/${hash}`} target="_blank" rel="noreferrer">{hash}</a>
-          ) : (
-            <span>{hash}</span>
-          )}
+      {userOpHash && bundledTxHash && explorerBase && (
+        <div style={{ marginTop: 12, padding: 12, background: '#fff3e0', border: '1px solid #ff9800', borderRadius: 4, color: '#e65100' }}>
+          <strong>📤 Transaction Submitted</strong><br/>
+          <a href={`${explorerBase}/tx/${bundledTxHash}`} target="_blank" rel="noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
+            View on Explorer
+          </a>
         </div>
       )}
+      
+      {/* Transaction Status Display */}
+      {txStatus === 'pending' && (
+        <div style={{ marginTop: 8, padding: 12, background: '#fff8e1', border: '1px solid #ffb300', borderRadius: 4, color: '#f57c00' }}>
+          <strong>⏳ Processing Transaction...</strong>
+          <br/>
+          <small>Please wait while your transaction is being confirmed.</small>
+        </div>
+      )}
+      
+      {/* Transaction Results */}
+      {txStatus === 'success' && (
+        <div style={{ marginTop: 8, padding: 12, background: '#e8f5e8', border: '1px solid #4caf50', borderRadius: 4, color: '#2e7d32' }}>
+          <strong>✅ Transfer Successful!</strong><br/>
+          <small style={{ color: '#666' }}>The {amount} tokens have been transferred to {to}</small>
+        </div>
+      )}
+      
+      {txStatus === 'failed' && (
+        <div style={{ marginTop: 8, padding: 12, background: '#ffebee', border: '1px solid #f44336', borderRadius: 4, color: '#d32f2f' }}>
+          <strong>❌ Transfer Failed</strong><br/>
+          <small style={{ color: '#666' }}>The transfer was not completed. Please try again.</small>
+        </div>
+      )}
+
       {error && (
         <div style={{ marginTop: 12, padding: 12, background: '#ffebee', border: '1px solid #f44336', borderRadius: 4, color: '#d32f2f' }}>
           <strong>Error:</strong> {error}

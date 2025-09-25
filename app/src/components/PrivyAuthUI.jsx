@@ -16,20 +16,14 @@ export function PrivyAuthUI({ chain }) {
     wallet.walletClientType === 'privy'
   )
   
-  // Debug logging to understand wallet structure
+  // Minimal debug logging - only log changes
   useEffect(() => {
-    if (authenticated && wallets.length > 0) {
-      console.log('Available wallets:', wallets)
-      console.log('Embedded wallet found:', embedded)
-      wallets.forEach((wallet, index) => {
-        console.log(`Wallet ${index}:`, {
-          walletClientType: wallet.walletClientType,
-          address: wallet.address,
-          type: wallet.type
-        })
-      })
+    if (authenticated && wallets.length === 0) {
+      console.log('⚠️ Authenticated but no wallets found - embedded wallet creation may be stuck')
+    } else if (authenticated && wallets.length > 0 && embedded) {
+      console.log('✅ Embedded wallet created successfully:', embedded.address)
     }
-  }, [authenticated, wallets, embedded])
+  }, [authenticated, wallets.length, embedded])
 
   useEffect(() => {
     async function fetchBalance() {
@@ -40,12 +34,15 @@ export function PrivyAuthUI({ chain }) {
         }
         const client = createPublicClient({ chain, transport: http('/lifeai-rpc') })
         const wei = await client.getBalance({ address: embedded.address })
-        setBalance(formatEther(wei))
-      } catch {
-        setBalance('')
+        const ethBalance = formatEther(wei)
+        setBalance(ethBalance)
+      } catch (error) {
+        console.error('Balance fetch error:', error)
+        setBalance('Error')
+        setError(`Balance fetch failed: ${error.message}`)
       }
     }
-    if (authenticated) fetchBalance()
+    if (authenticated && embedded?.address) fetchBalance()
   }, [authenticated, embedded?.address])
 
   // Initialize a Simple Smart Account on login using factory address
@@ -54,37 +51,48 @@ export function PrivyAuthUI({ chain }) {
       try {
         setSaError('')
         setSmartAddress('')
-        if (!authenticated) return
-        if (!embedded?.address) return
-        if (!chain?.id) return
-        const accountFactory = import.meta.env.VITE_SIMPLE_ACCOUNT_FACTORY
-        if (!accountFactory) {
-          setSaError('Missing VITE_SIMPLE_ACCOUNT_FACTORY')
+        
+        if (!authenticated || !embedded?.address || !chain?.id) {
           return
         }
+        
+        const accountFactory = import.meta.env.VITE_SIMPLE_ACCOUNT_FACTORY
+        if (!accountFactory) {
+          setSaError('Missing VITE_SIMPLE_ACCOUNT_FACTORY environment variable')
+          return
+        }
+        
         const provider = await embedded.getEthereumProvider()
         const walletClient = createWalletClient({ account: embedded.address, chain, transport: custom(provider) })
         const owner = walletClient
         const entryPoint = { address: '0xd308aE59cb31932E8D9305BAda32Fa782d3D5d42', version: '0.7' }
         const client = createPublicClient({ chain, transport: http('/lifeai-rpc') })
+        
         const account = await toSimpleSmartAccount({ client, owner, entryPoint, factoryAddress: accountFactory, index: 0n })
+        
         let computed = account.address
         if (!computed || computed === '0x0000000000000000000000000000000000000000') {
           // Fallback: compute via factory directly
           const simpleFactoryAbi = [
             { name: 'getAddress', type: 'function', stateMutability: 'view', inputs: [ { name: 'owner', type: 'address' }, { name: 'salt', type: 'uint256' } ], outputs: [ { name: 'addr', type: 'address' } ] }
           ]
-          // Verify factory has code (not EOA and not empty)
           const code = await client.getBytecode({ address: accountFactory })
-          if (!code || code === '0x') throw new Error('Factory not deployed on this chain')
-          try {
-            computed = await client.readContract({ address: accountFactory, abi: simpleFactoryAbi, functionName: 'getAddress', args: [embedded.address, 0n] })
-          } catch (readErr) {
-            throw new Error('Factory getAddress reverted. Verify factory address & ABI')
+          if (!code || code === '0x') {
+            throw new Error(`Factory not deployed on chain ${chain.id}`)
           }
+          
+          computed = await client.readContract({ 
+            address: accountFactory, 
+            abi: simpleFactoryAbi, 
+            functionName: 'getAddress', 
+            args: [embedded.address, 0n] 
+          })
         }
+        
         setSmartAddress(computed)
+        console.log('Smart wallet initialized:', computed)
       } catch (e) {
+        console.error('Smart wallet initialization failed:', e)
         setSaError(e?.message || 'Smart wallet init failed')
       }
     }
@@ -111,8 +119,21 @@ export function PrivyAuthUI({ chain }) {
           <div><strong>Smart Wallet (Simple):</strong> {smartAddress || '—'}</div>
           <div><strong>Sepolia Balance:</strong> {balance ? `${balance} ETH` : '—'}</div>
           {authenticated && wallets.length === 0 && (
-            <div style={{ color: '#666', fontSize: '0.9em', marginTop: 8 }}>
-              Creating embedded wallet...
+            <div style={{ color: '#f57c00', fontSize: '0.9em', marginTop: 8, padding: '8px', background: '#fff8e1', borderRadius: '4px' }}>
+              ⚠️ <strong>Embedded wallet creation stuck!</strong>
+              <br/>
+              <small>Check console for errors. This usually means:</small>
+              <ul style={{ margin: '4px 0', paddingLeft: '16px', fontSize: '0.8em' }}>
+                <li>Privy dashboard settings issue</li>
+                <li>Network connectivity problem</li>
+                <li>Browser/localStorage issue</li>
+              </ul>
+              <button 
+                onClick={() => window.location.reload()} 
+                style={{ fontSize: '0.8em', padding: '2px 8px', marginTop: '4px' }}
+              >
+                🔄 Reload Page
+              </button>
             </div>
           )}
         </div>
@@ -136,7 +157,7 @@ export function PrivyAuthUI({ chain }) {
                   })
                 } catch (err) {
                   console.error('Login error:', err)
-                  setError('Login failed. Please check your Privy dashboard configuration.')
+                  setError(`Login failed: ${err.message || 'Please check your Privy dashboard configuration.'}`)
                 }
               }} 
               className="btn btn-primary"

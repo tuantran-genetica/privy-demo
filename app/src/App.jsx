@@ -1,15 +1,14 @@
 import React from 'react'
 import { PrivyProvider } from '@privy-io/react-auth'
 import { defineChain } from 'viem'
-import GaslessDemo from './components/GaslessDemo.jsx'
 import GaslessErc20 from './components/GaslessErc20.jsx'
 import { PrivyAuthUI } from './components/PrivyAuthUI.jsx'
 import { Navbar } from './components/Navbar.jsx'
-import { Admin } from './components/Admin.jsx'
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID
 const clientId = import.meta.env.VITE_PRIVY_CLIENT_ID
 
+// Basic configuration check
 if (!appId) {
   console.error('VITE_PRIVY_APP_ID is not set in environment variables')
 }
@@ -65,8 +64,6 @@ export default function App() {
       <Navbar />
       <div className="container">
         <PrivyAuthUI chain={lifeAiTestnet} />
-        <hr style={{ margin: '24px 0' }} />
-        <GaslessDemo chain={lifeAiTestnet} />
         <hr style={{ margin: '24px 0' }} />
         <GaslessErc20 chain={lifeAiTestnet} />
       </div>
