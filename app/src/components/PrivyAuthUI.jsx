@@ -153,7 +153,7 @@ export function PrivyAuthUI({ chain }) {
                 try {
                   setError('')
                   await login({
-                    loginMethods: ['email','google','sms'],
+                    loginMethods: ['email','google','sms', 'wallet'],
                   })
                 } catch (err) {
                   console.error('Login error:', err)

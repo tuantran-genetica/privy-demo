@@ -1,0 +1,13 @@
+{
+  "name": "privy-root-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sign": "node test.js",
+    "verify": "node verify.js"
+  },
+  "dependencies": {
+    "ethers": "^6.15.0",
+    "viem": "^2.37.9"
+  }
+}
