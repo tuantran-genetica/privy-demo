@@ -4,24 +4,34 @@
 ```mermaid
 sequenceDiagram
     actor User
-    participant Client as Your App/Client
-    participant SA as Smart Account Client
+    participant Client as App / Frontend
+    participant SA as Smart Account SDK
     participant Chain as Blockchain
 
-    User->>Client: Trigger action (e.g., transfer)
-    Client->>SA: Preflight simulate (dry-run, no polling)
+    User->>Client: Initiates action (e.g., transfer)
+    Client->>SA: simulateUserOperation(...)  (dry-run)
     alt Simulation fails
-        Client-->>User: Show error
-    else Simulation OK
-        Client->>SA: writeContract(...) → Get UserOp hash
-        Note over SA,Chain: Simulate OK<br> but execution can still fail—poll to confirm
-        Client->>SA: pollUserOperationReceipt(hash)
-        SA-->Chain: Bundled execution
-        Client->>Chain: Verify receipt (final confirmation)
+        SA-->>Client: Simulation error
+        Client-->>User: Display error & stop
+    else Simulation succeeds
+        SA-->>Client: Gas & validation OK
+        Client->>SA: sendUserOperation(...) → returns UserOp hash
+        Note right of Client: Transaction submitted but not yet confirmed
+
+        par Client-side polling
+            Client->>SA: pollUserOperationReceipt(hash)
+            SA->>Chain: Wait for inclusion & execution
+        and On-chain execution
+            SA-->Chain: Bundled in next block
+        end
+
         alt Execution succeeds
-            Client-->>User: Success & balance update
-        else Execution fails
-            Client-->>User: Real error details
+            SA-->>Client: Success receipt (status = 1)
+            Client->>Chain: (optional) verifyReceipt(hash)
+            Client-->>User: Show success + updated balance
+        else Execution reverts
+            SA-->>Client: Failure receipt (status = 0)
+            Client-->>User: Show failure reason (decode revert)
         end
     end
 ```
