@@ -2,6 +2,7 @@ import React from 'react'
 import { PrivyProvider } from '@privy-io/react-auth'
 import { defineChain } from 'viem'
 import GaslessErc20 from './components/GaslessErc20.jsx'
+import StatusPollingDemo from './components/StatusPollingDemo.jsx'
 import { PrivyAuthUI } from './components/PrivyAuthUI.jsx'
 import { Navbar } from './components/Navbar.jsx'
 
@@ -66,6 +67,8 @@ export default function App() {
         <PrivyAuthUI chain={lifeAiTestnet} />
         <hr style={{ margin: '24px 0' }} />
         <GaslessErc20 chain={lifeAiTestnet} />
+        <hr style={{ margin: '24px 0' }} />
+        <StatusPollingDemo chain={lifeAiTestnet} />
       </div>
     </PrivyProvider>
   )

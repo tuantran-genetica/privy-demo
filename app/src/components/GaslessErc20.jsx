@@ -3,15 +3,17 @@ import { useWallets, usePrivy } from '@privy-io/react-auth'
 import { createPublicClient, createWalletClient, http, custom, formatUnits, parseUnits, erc20Abi } from 'viem'
 import { getUserOperationHash, entryPoint07Abi } from 'viem/account-abstraction'
 import { toSimpleSmartAccount } from 'permissionless/accounts'
-import { 
-  createClients, 
-  createSmartAccount, 
-  getTokenInfo, 
-  getTokenBalance, 
-  createSmartAccountClientWithPaymaster, 
+import {
+  createClients,
+  createSmartAccount,
+  createSmartAccountClientWithPaymaster,
   pollUserOperationReceipt,
   checkTransactionStatus,
   analyzeTransactionFailure,
+} from '../utils/onchain'
+import {
+  getTokenInfo,
+  getTokenBalance
 } from '../utils/erc20'
 
 
@@ -55,13 +57,13 @@ export default function GaslessErc20({ chain }) {
     setPollAttempts,
     setFailureReason,
     setBundledTxHash,
-    
+
     // Transaction checks
-    checkTransactionStatus: (txHash, type = 'transfer') => 
+    checkTransactionStatus: (txHash, type = 'transfer') =>
       checkTransactionStatus(txHash, type, token, chain, createCallbacks()),
     analyzeTransactionFailure: (publicClient, receipt, txHash, type) =>
       analyzeTransactionFailure(publicClient, receipt, txHash, type, token, createCallbacks()),
-    
+
     // Balance updates
     fetchTokenBalance,
     fetchEoaTokenBalance
@@ -72,23 +74,23 @@ export default function GaslessErc20({ chain }) {
   // Fetch EOA (embedded wallet) ERC20 token balance
   async function fetchEoaTokenBalance() {
     if (!token || !wallets.length) return
-    
+
     try {
       setEoaBalanceLoading(true)
-      
+
       const embedded = wallets.find(w => w.walletClientType === 'privy')
       if (!embedded) return
-      
+
       const publicClient = createPublicClient({ chain, transport: http('/lifeai-rpc') })
-      
+
       // Get token info and balance
       const { decimals, symbol } = await getTokenInfo(publicClient, token)
       const balance = await getTokenBalance(publicClient, token, embedded.address, decimals)
-      
+
       setEoaTokenBalance(balance)
       setTokenDecimals(decimals)
       setTokenSymbol(symbol)
-      
+
     } catch (e) {
       console.error('Error fetching EOA token balance:', e)
       setEoaTokenBalance('Error')
@@ -100,26 +102,26 @@ export default function GaslessErc20({ chain }) {
   // Fetch ERC20 token balance and metadata
   async function fetchTokenBalance() {
     if (!token || !wallets.length) return
-    
+
     try {
       setBalanceLoading(true)
       setError('')
-      
+
       const embedded = wallets.find(w => w.walletClientType === 'privy')
       if (!embedded) return
-      
+
       // Create clients and smart account
       const { publicClient, owner } = await createClients(embedded, chain)
       const account = await createSmartAccount(publicClient, owner, chain)
-      
+
       // Get token info and balance
       const { decimals, symbol } = await getTokenInfo(publicClient, token)
       const balance = await getTokenBalance(publicClient, token, account.address, decimals)
-      
+
       setTokenBalance(balance)
       setTokenDecimals(decimals)
       setTokenSymbol(symbol)
-      
+
     } catch (e) {
       console.error('Error fetching token balance:', e)
       setTokenBalance('Error')
@@ -170,9 +172,9 @@ export default function GaslessErc20({ chain }) {
               chainId: chain.id
             })
             // Resolve current App Wallet ID from session (linked_accounts)
-           
+
             let walletId = user?.wallet?.id
-          if(!walletId) throw new Error('No Wallet ID available in session')
+            if (!walletId) throw new Error('No Wallet ID available in session')
             // Attach user's JWT per Privy docs to authorize on-behalf-of signing
             const jwt = await getAccessToken()?.catch(() => null)
             const res = await fetch(`/api/wallets/${walletId}/rpc`, {
@@ -182,7 +184,7 @@ export default function GaslessErc20({ chain }) {
                 ...(jwt ? { 'x-user-jwt': jwt } : {}),
               },
               body: JSON.stringify({ method: 'personal_sign', params: { message: hash, encoding: 'hex' } })
-            })  
+            })
             if (!res.ok) throw new Error(`App wallet sign error ${res.status}: ${await res.text()}`)
             const data = await res.json()
             const sig = data?.data?.signature || data?.signature
@@ -198,20 +200,20 @@ export default function GaslessErc20({ chain }) {
       let tokenDecimals = 18
       try {
         tokenDecimals = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' })
-      } catch {}
+      } catch { }
       // Convert amount to token units with decimals
       const value = parseUnits(amount, tokenDecimals)
 
       // Check smart wallet balance
       let senderBalance = 0n
       try {
-        senderBalance = await publicClient.readContract({ 
-          address: token, 
-          abi: erc20Abi, 
-          functionName: 'balanceOf', 
-          args: [account.address] 
+        senderBalance = await publicClient.readContract({
+          address: token,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [account.address]
         })
-      } catch {}
+      } catch { }
       if (senderBalance < value) {
         throw new Error(`Insufficient token balance in smart wallet ${account.address}. Have ${formatUnits(senderBalance, tokenDecimals)}, need ${amount}.`)
       }
@@ -224,7 +226,7 @@ export default function GaslessErc20({ chain }) {
         args: [to, value]
       })
       setUserOpHash(uoHash || '')
-      
+
       // Automatically check user operation receipt
       if (uoHash) {
         setTxStatus('pending')
@@ -232,10 +234,10 @@ export default function GaslessErc20({ chain }) {
       }
     } catch (e) {
       console.error('ERC20 transfer error:', e)
-      
+
       // Simplified error handling for common cases
       let errorMessage = e?.message || 'Transfer failed'
-      
+
       // Clean up technical details from error message
       errorMessage = errorMessage
         .replace(/^(paymaster|bundler|useroperation|factory|rpc).*error:?\s*/i, '')
@@ -253,7 +255,7 @@ export default function GaslessErc20({ chain }) {
       } else {
         errorMessage = `❌ ${errorMessage}`
       }
-      
+
       setError(errorMessage)
     } finally {
       setBusy(false)
@@ -267,32 +269,32 @@ export default function GaslessErc20({ chain }) {
       <h2 className="h2">Gasless ERC-20 Transfer</h2>
       <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input 
-            className="input" 
-            placeholder="Token address" 
-            value={token} 
+          <input
+            className="input"
+            placeholder="Token address"
+            value={token}
             onChange={(e) => setToken(e.target.value)}
             style={{ flex: 1 }}
           />
-          <button 
-            className="btn btn-secondary" 
+          <button
+            className="btn btn-secondary"
             onClick={() => {
               fetchTokenBalance()
               fetchEoaTokenBalance()
-            }} 
+            }}
             disabled={balanceLoading || eoaBalanceLoading || !token}
             style={{ minWidth: '140px', fontSize: '0.9em' }}
           >
             {(balanceLoading || eoaBalanceLoading) ? 'Loading...' : '🔄 Get Balances'}
           </button>
         </div>
-        
+
         {/* Token Balance Display */}
         {(tokenBalance || eoaTokenBalance || tokenSymbol || balanceLoading || eoaBalanceLoading) && (
-          <div style={{ 
-            padding: 12, 
-            background: '#f8f9fa', 
-            border: '1px solid #dee2e6', 
+          <div style={{
+            padding: 12,
+            background: '#f8f9fa',
+            border: '1px solid #dee2e6',
             borderRadius: 4,
             fontSize: '0.95em'
           }}>
@@ -301,12 +303,12 @@ export default function GaslessErc20({ chain }) {
                 {/* Smart Account Balance */}
                 <div style={{ marginBottom: 12 }}>
                   <strong>🏦 Smart Account Balance:</strong>
-                  <br/>
-                  <span style={{ 
-                    fontSize: '1.1em', 
-                    fontWeight: 'bold', 
-                    color: tokenBalance === 'Error' ? '#d32f2f' : 
-                           (tokenBalance === '0' || tokenBalance === '0.0') ? '#f57c00' : '#2e7d32' 
+                  <br />
+                  <span style={{
+                    fontSize: '1.1em',
+                    fontWeight: 'bold',
+                    color: tokenBalance === 'Error' ? '#d32f2f' :
+                      (tokenBalance === '0' || tokenBalance === '0.0') ? '#f57c00' : '#2e7d32'
                   }}>
                     {balanceLoading ? 'Loading...' : `${tokenBalance} ${tokenSymbol}`}
                   </span>
@@ -320,12 +322,12 @@ export default function GaslessErc20({ chain }) {
                 {/* EOA Balance */}
                 <div style={{ marginBottom: 8 }}>
                   <strong>👤 Embedded Wallet (EOA) Balance:</strong>
-                  <br/>
-                  <span style={{ 
-                    fontSize: '1.1em', 
-                    fontWeight: 'bold', 
-                    color: eoaTokenBalance === 'Error' ? '#d32f2f' : 
-                           (eoaTokenBalance === '0' || eoaTokenBalance === '0.0') ? '#f57c00' : '#2e7d32' 
+                  <br />
+                  <span style={{
+                    fontSize: '1.1em',
+                    fontWeight: 'bold',
+                    color: eoaTokenBalance === 'Error' ? '#d32f2f' :
+                      (eoaTokenBalance === '0' || eoaTokenBalance === '0.0') ? '#f57c00' : '#2e7d32'
                   }}>
                     {eoaBalanceLoading ? 'Loading...' : `${eoaTokenBalance} ${tokenSymbol}`}
                   </span>
@@ -339,17 +341,17 @@ export default function GaslessErc20({ chain }) {
                 {tokenBalance !== 'Error' && eoaTokenBalance !== 'Error' && !balanceLoading && !eoaBalanceLoading && (
                   <div style={{ fontSize: '0.85em', color: '#666', marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
                     <strong>Token Info:</strong> {tokenSymbol || 'Unknown'} • Decimals: {tokenDecimals}
-                    <br/>
+                    <br />
                     <strong>EOA Address:</strong> {wallets.find(w => w.walletClientType === 'privy')?.address?.slice(0, 10)}...
                   </div>
                 )}
               </div>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={() => {
                   fetchTokenBalance()
                   fetchEoaTokenBalance()
-                }} 
+                }}
                 disabled={balanceLoading || eoaBalanceLoading || !token}
                 style={{ fontSize: '0.8em', padding: '4px 8px', marginLeft: '8px' }}
               >
@@ -358,8 +360,8 @@ export default function GaslessErc20({ chain }) {
             </div>
           </div>
         )}
-        
-        
+
+
         <input className="input" placeholder="Recipient address" value={to} onChange={(e) => setTo(e.target.value)} />
         <input className="input" placeholder={`Amount (decimals ${tokenDecimals})`} value={amount} onChange={(e) => setAmount(e.target.value)} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -368,9 +370,9 @@ export default function GaslessErc20({ chain }) {
         </label>
         <button className="btn btn-primary" onClick={send} disabled={busy}>Send gasless transfer</button>
         {userOpHash && (
-          <button 
-            className="btn btn-secondary" 
-            onClick={() => pollUserOperationReceipt(userOpHash, 0, 'transfer', createCallbacks())} 
+          <button
+            className="btn btn-secondary"
+            onClick={() => pollUserOperationReceipt(userOpHash, 0, 'transfer', createCallbacks())}
             disabled={checking}
             style={{ marginLeft: 8 }}
           >
@@ -380,33 +382,33 @@ export default function GaslessErc20({ chain }) {
       </div>
       {userOpHash && bundledTxHash && explorerBase && (
         <div style={{ marginTop: 12, padding: 12, background: '#fff3e0', border: '1px solid #ff9800', borderRadius: 4, color: '#e65100' }}>
-          <strong>📤 Transaction Submitted</strong><br/>
+          <strong>📤 Transaction Submitted</strong><br />
           <a href={`${explorerBase}/tx/${bundledTxHash}`} target="_blank" rel="noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
             View on Explorer
           </a>
         </div>
       )}
-      
+
       {/* Transaction Status Display */}
       {txStatus === 'pending' && (
         <div style={{ marginTop: 8, padding: 12, background: '#fff8e1', border: '1px solid #ffb300', borderRadius: 4, color: '#f57c00' }}>
           <strong>⏳ Processing Transaction...</strong>
-          <br/>
+          <br />
           <small>Please wait while your transaction is being confirmed.</small>
         </div>
       )}
-      
+
       {/* Transaction Results */}
       {txStatus === 'success' && (
         <div style={{ marginTop: 8, padding: 12, background: '#e8f5e8', border: '1px solid #4caf50', borderRadius: 4, color: '#2e7d32' }}>
-          <strong>✅ Transfer Successful!</strong><br/>
+          <strong>✅ Transfer Successful!</strong><br />
           <small style={{ color: '#666' }}>The {amount} tokens have been transferred to {to}</small>
         </div>
       )}
-      
+
       {txStatus === 'failed' && (
         <div style={{ marginTop: 8, padding: 12, background: '#ffebee', border: '1px solid #f44336', borderRadius: 4, color: '#d32f2f' }}>
-          <strong>❌ Transfer Failed</strong><br/>
+          <strong>❌ Transfer Failed</strong><br />
           <small style={{ color: '#666' }}>The transfer was not completed. Please try again.</small>
         </div>
       )}
