@@ -1,5 +1,31 @@
 ## Smart Account Simulation Guide
 
+### Simple Client Flow
+```mermaid
+sequenceDiagram
+    actor User
+    participant Client as Your App/Client
+    participant SA as Smart Account Client
+    participant Chain as Blockchain
+
+    User->>Client: Trigger action (e.g., transfer)
+    Client->>SA: Preflight simulate (dry-run, no polling)
+    alt Simulation fails
+        Client-->>User: Show error
+    else Simulation OK
+        Client->>SA: writeContract(...) → Get UserOp hash
+        Note over SA,Chain: Simulate OK<br> but execution can still fail—poll to confirm
+        Client->>SA: pollUserOperationReceipt(hash)
+        SA-->Chain: Bundled execution
+        Client->>Chain: Verify receipt (final confirmation)
+        alt Execution succeeds
+            Client-->>User: Success & balance update
+        else Execution fails
+            Client-->>User: Real error details
+        end
+    end
+```
+
 ### Client Setup
 Use the provided helpers:
 - `createClients(embeddedWallet, chain)`: Gets public and owner clients.
@@ -31,30 +57,6 @@ Use the provided helpers:
 - No need to manage infrastructure details—helpers handle submission and sponsorship for you.
 - Simulation doesn't trigger polling—it's just a pre-check. Poll only the UserOp hash from execution to verify real success/failure (sim OK doesn't guarantee execution OK).
 
-### Simple Client Flow
-```mermaid
-sequenceDiagram
-    actor User
-    participant Client as Your App/Client
-    participant SA as Smart Account Client
-    participant Chain as Blockchain
 
-    User->>Client: Trigger action (e.g., transfer)
-    Client->>SA: Preflight simulate (dry-run, no polling)
-    alt Simulation fails
-        Client-->>User: Show error
-    else Simulation OK
-        Client->>SA: writeContract(...) → Get UserOp hash
-        Note over SA,Chain: Simulate OK<br> but execution can still fail—poll to confirm
-        Client->>SA: pollUserOperationReceipt(hash)
-        SA-->Chain: Bundled execution
-        Client->>Chain: Verify receipt (final confirmation)
-        alt Execution succeeds
-            Client-->>User: Success & balance update
-        else Execution fails
-            Client-->>User: Real error details
-        end
-    end
-```
 
 
